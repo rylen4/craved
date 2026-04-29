@@ -6,6 +6,7 @@ class CartItem {
   final double price;
   final String image;
   final int quantity;
+  final String restaurantId;
   final String restaurantName;
 
   CartItem({
@@ -13,6 +14,7 @@ class CartItem {
     required this.name,
     required this.price,
     required this.image,
+    required this.restaurantId,
     required this.restaurantName,
     this.quantity = 1,
   });
@@ -23,6 +25,7 @@ class CartItem {
       name: name,
       price: price,
       image: image,
+      restaurantId: restaurantId,
       restaurantName: restaurantName,
       quantity: quantity ?? this.quantity,
     );
@@ -32,16 +35,36 @@ class CartItem {
 class CartNotifier extends StateNotifier<List<CartItem>> {
   CartNotifier() : super([]);
 
-  void addItem(String id, String name, double price, String image, String restaurantName) {
+  void addItem({
+    required String id,
+    required String name,
+    required double price,
+    required String image,
+    required String restaurantId,
+    required String restaurantName,
+  }) {
     final existingIndex = state.indexWhere((item) => item.id == id);
 
     if (existingIndex >= 0) {
       state = [
         for (int i = 0; i < state.length; i++)
-          if (i == existingIndex) state[i].copyWith(quantity: state[i].quantity + 1) else state[i]
+          if (i == existingIndex)
+            state[i].copyWith(quantity: state[i].quantity + 1)
+          else
+            state[i]
       ];
     } else {
-      state = [...state, CartItem(id: id, name: name, price: price, image: image, restaurantName: restaurantName)];
+      state = [
+        ...state,
+        CartItem(
+          id: id,
+          name: name,
+          price: price,
+          image: image,
+          restaurantId: restaurantId,
+          restaurantName: restaurantName,
+        ),
+      ];
     }
   }
 
@@ -53,7 +76,10 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     if (item.quantity > 1) {
       state = [
         for (int i = 0; i < state.length; i++)
-          if (i == existingIndex) state[i].copyWith(quantity: state[i].quantity - 1) else state[i]
+          if (i == existingIndex)
+            state[i].copyWith(quantity: state[i].quantity - 1)
+          else
+            state[i]
       ];
     } else {
       state = state.where((item) => item.id != id).toList();

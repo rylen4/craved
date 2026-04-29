@@ -9,6 +9,8 @@ import '../core/theme.dart';
 import '../core/auth_service.dart';
 
 final searchQueryProvider = StateProvider<String>((ref) => '');
+// NEW: State to track the currently selected category filter
+final selectedCategoryProvider = StateProvider<String?>((ref) => null);
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -40,7 +42,7 @@ class HomeScreen extends ConsumerWidget {
             children: [
               _buildSearchBar(ref),
               const SizedBox(height: 32),
-              _buildCategories(),
+              _buildCategories(ref), // Passed ref here
               const SizedBox(height: 32),
               _buildLiveRestaurants(ref),
             ],
@@ -127,7 +129,10 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildCategories() {
+  Widget _buildCategories(WidgetRef ref) {
+    // Read the current active category
+    final activeCategory = ref.watch(selectedCategoryProvider);
+
     final categories = [
       {'label': 'Burgers', 'icon': Icons.fastfood},
       {'label': 'Pizza', 'icon': Icons.local_pizza},
@@ -142,26 +147,39 @@ class HomeScreen extends ConsumerWidget {
         itemCount: categories.length,
         itemBuilder: (context, index) {
           final cat = categories[index];
+          final label = cat['label'] as String;
+          final isSelected = activeCategory == label;
+
           return Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: Column(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: AppColors.outlineVariant.withValues(alpha: 0.1)),
+            child: GestureDetector(
+              // NEW: Clicking a category toggles it on and off
+              onTap: () {
+                ref.read(selectedCategoryProvider.notifier).state = isSelected ? null : label;
+              },
+              child: Column(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : AppColors.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: AppColors.outlineVariant.withValues(alpha: 0.1)),
+                    ),
+                    child: Icon(cat['icon'] as IconData, color: isSelected ? Colors.black : AppColors.primary),
                   ),
-                  child: Icon(cat['icon'] as IconData, color: AppColors.primary),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  cat['label'].toString().toUpperCase(),
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    label.toUpperCase(),
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? AppColors.primary : Colors.white70
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -171,6 +189,7 @@ class HomeScreen extends ConsumerWidget {
 
   Widget _buildLiveRestaurants(WidgetRef ref) {
     final searchQuery = ref.watch(searchQueryProvider).toLowerCase();
+    final selectedCategory = ref.watch(selectedCategoryProvider); // Get the filter
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -185,7 +204,13 @@ class HomeScreen extends ConsumerWidget {
         final docs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final name = (data['name'] ?? '').toString().toLowerCase();
-          return name.contains(searchQuery);
+          final category = (data['category'] ?? '').toString();
+
+          // NEW: Filter logic
+          final matchesSearch = name.contains(searchQuery);
+          final matchesCategory = selectedCategory == null || category == selectedCategory;
+
+          return matchesSearch && matchesCategory;
         }).toList();
 
         if (docs.isEmpty) {
@@ -245,20 +270,19 @@ class HomeScreen extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      // RESTORED: The turquoise Menu Action Pill
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceContainerHighest,
+                          color: AppColors.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Row(
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(LucideIcons.star, color: AppColors.primary, size: 14),
-                            const SizedBox(width: 4),
-                            Text(
-                              data['rating']?.toString() ?? '5.0',
-                              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
+                            Text('Menu', style: TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                            SizedBox(width: 4),
+                            Icon(LucideIcons.chevronRight, size: 14, color: AppColors.primary),
                           ],
                         ),
                       ),

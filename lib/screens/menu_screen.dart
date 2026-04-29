@@ -17,8 +17,9 @@ class MenuScreen extends ConsumerStatefulWidget {
 }
 
 class _MenuScreenState extends ConsumerState<MenuScreen> {
-  String title = 'Loading...';
-  String img = '';
+  String _restaurantName = '';
+  String _heroImage = '';
+  bool _headerLoaded = false;
 
   @override
   void initState() {
@@ -28,18 +29,21 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
 
   Future<void> _fetchRestaurantHeader() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('restaurants').doc(widget.id).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('restaurants')
+          .doc(widget.id)
+          .get();
+
       if (mounted && doc.exists) {
-        final data = doc.data();
-        if (data != null) {
-          setState(() {
-            title = data['name'] ?? 'Restaurant';
-            img = data['image'] ?? '';
-          });
-        }
+        final data = doc.data() as Map<String, dynamic>;
+        setState(() {
+          _restaurantName = data['name'] ?? 'Restaurant';
+          _heroImage = data['image'] ?? '';
+          _headerLoaded = true;
+        });
       }
     } catch (e) {
-      debugPrint('Error fetching header: $e');
+      debugPrint('Error fetching restaurant header: $e');
     }
   }
 
@@ -55,10 +59,15 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         slivers: [
           _buildAppBar(context),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 24, right: 24, top: 24, bottom: 100),
-              child: _buildGroupedMenuStream(),
-            ),
+            child: !_headerLoaded
+                ? const SizedBox(
+                    height: 300,
+                    child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.only(left: 24, right: 24, top: 24, bottom: 100),
+                    child: _buildGroupedMenuStream(),
+                  ),
           ),
         ],
       ),
@@ -66,9 +75,8 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: InkWell(
+                child: GestureDetector(
                   onTap: () => context.push('/cart'),
-                  borderRadius: BorderRadius.circular(16),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     decoration: BoxDecoration(
@@ -86,13 +94,24 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                           ),
                           child: Text(
                             '$cartItemCount',
-                            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
-                        const Text('View Cart', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                        const Text(
+                          'View Cart',
+                          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                         Text(
                           '\$${cartTotal.toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
@@ -113,11 +132,20 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
         onPressed: () => context.pop(),
       ),
-      title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      flexibleSpace: img.isEmpty
+      title: _headerLoaded
+          ? Text(
+              _restaurantName,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            )
+          : const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+            ),
+      flexibleSpace: _heroImage.isEmpty
           ? Container(color: AppColors.surfaceContainerHighest)
           : CachedNetworkImage(
-              imageUrl: img,
+              imageUrl: _heroImage,
               fit: BoxFit.cover,
               color: Colors.black54,
               colorBlendMode: BlendMode.darken,
@@ -139,7 +167,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          return const Center(child: Text('Error loading menu', style: TextStyle(color: Colors.white)));
+          return const Center(
+            child: Text('Error loading menu', style: TextStyle(color: Colors.white)),
+          );
         }
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: AppColors.primary));
@@ -147,11 +177,13 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
 
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) {
-          return const Center(child: Text('No items yet.', style: TextStyle(color: Colors.white54)));
+          return const Center(
+            child: Text('No items yet.', style: TextStyle(color: Colors.white54)),
+          );
         }
 
         final Map<String, List<QueryDocumentSnapshot>> groupedMenu = {};
-        for (var doc in docs) {
+        for (final doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
           final category = data['category'] ?? 'General';
           groupedMenu.putIfAbsent(category, () => []).add(doc);
@@ -173,10 +205,11 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   padding: const EdgeInsets.only(top: 16, bottom: 16),
                   child: Text(
                     categoryName,
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontSize: 22,
-                          color: AppColors.primary,
-                        ),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ),
                 ListView.separated(
@@ -201,9 +234,9 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
   }
 
   Widget _buildMenuItemCard(String itemId, Map<String, dynamic> data) {
-    final name = data['name'] ?? 'Unknown';
-    final price = (data['price'] ?? 0.0) as num;
-    final image = data['image'] ?? '';
+    final name = data['name'] as String? ?? 'Unknown';
+    final price = (data['price'] as num? ?? 0.0).toDouble();
+    final image = data['image'] as String? ?? '';
 
     return Container(
       decoration: BoxDecoration(
@@ -215,8 +248,16 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
+            if (!_headerLoaded) return;
             HapticFeedback.mediumImpact();
-            ref.read(cartProvider.notifier).addItem(itemId, name, price.toDouble(), image, title);
+            ref.read(cartProvider.notifier).addItem(
+              id: itemId,
+              name: name,
+              price: price,
+              image: image,
+              restaurantId: widget.id,
+              restaurantName: _restaurantName,
+            );
           },
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -227,10 +268,17 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 4),
                       Text(
-                        data['description'] ?? '',
+                        data['description'] as String? ?? '',
                         style: const TextStyle(color: Colors.white54, fontSize: 13),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -240,7 +288,11 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                         children: [
                           Text(
                             '\$${price.toStringAsFixed(2)}',
-                            style: const TextStyle(color: AppColors.primary, fontSize: 16, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const Spacer(),
                           Container(
@@ -249,11 +301,21 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                               color: AppColors.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(LucideIcons.plus, size: 16, color: AppColors.primary),
-                                SizedBox(width: 4),
-                                Text('Add', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                Icon(
+                                  LucideIcons.plus,
+                                  size: 16,
+                                  color: _headerLoaded ? AppColors.primary : Colors.white24,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Add',
+                                  style: TextStyle(
+                                    color: _headerLoaded ? AppColors.primary : Colors.white24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -270,7 +332,11 @@ class _MenuScreenState extends ConsumerState<MenuScreen> {
                     width: 90,
                     height: 90,
                     fit: BoxFit.cover,
-                    errorWidget: (c, u, e) => Container(width: 90, height: 90, color: AppColors.surfaceContainerHighest),
+                    errorWidget: (c, u, e) => Container(
+                      width: 90,
+                      height: 90,
+                      color: AppColors.surfaceContainerHighest,
+                    ),
                   ),
                 ),
               ],

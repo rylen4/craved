@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../core/theme.dart';
 
@@ -47,8 +46,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(milliseconds: 3000));
     if (!mounted) return;
 
-    final isLoggedIn = FirebaseAuth.instance.currentUser != null;
-    context.go(isLoggedIn ? '/' : '/auth');
+    // THE FIX: Always route directly to the Beta Launchpad!
+    context.go('/launchpad');
   }
 
   @override

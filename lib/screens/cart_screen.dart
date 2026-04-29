@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../core/theme.dart';
 import '../core/cart_provider.dart';
+import '../core/geocoding_service.dart';
 
 class CartScreen extends ConsumerWidget {
   const CartScreen({super.key});
@@ -14,8 +14,7 @@ class CartScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cart = ref.watch(cartProvider);
-    final notifier = ref.watch(cartProvider.notifier);
-    final total = notifier.total;
+    final total = ref.watch(cartProvider.notifier).total;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -26,7 +25,10 @@ class CartScreen extends ConsumerWidget {
           icon: const Icon(LucideIcons.arrowLeft, color: Colors.white),
           onPressed: () => context.pop(),
         ),
-        title: const Text('Your Cart', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Your Cart',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         actions: [
           if (cart.isNotEmpty)
             TextButton(
@@ -42,12 +44,18 @@ class CartScreen extends ConsumerWidget {
                 children: [
                   const Icon(LucideIcons.shoppingBag, size: 80, color: Colors.white24),
                   const SizedBox(height: 16),
-                  const Text('Your cart is empty.', style: TextStyle(color: Colors.white54, fontSize: 18)),
+                  const Text(
+                    'Your cart is empty.',
+                    style: TextStyle(color: Colors.white54, fontSize: 18),
+                  ),
                   const SizedBox(height: 24),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
                     onPressed: () => context.pop(),
-                    child: const Text('Keep Browsing', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Keep Browsing',
+                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
@@ -79,20 +87,29 @@ class CartScreen extends ConsumerWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: CachedNetworkImage(
-              imageUrl: item.image,
-              width: 70,
-              height: 70,
-              fit: BoxFit.cover,
-              errorWidget: (c, u, e) => Container(width: 70, height: 70, color: AppColors.surfaceContainerHighest),
-            ),
+            child: item.image.isNotEmpty
+                ? Image.network(
+                    item.image,
+                    width: 70,
+                    height: 70,
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => _imagePlaceholder(),
+                  )
+                : _imagePlaceholder(),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  item.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '\$${(item.price * item.quantity).toStringAsFixed(2)}',
@@ -107,16 +124,34 @@ class CartScreen extends ConsumerWidget {
                 icon: const Icon(LucideIcons.minusCircle, color: Colors.white54),
                 onPressed: () => ref.read(cartProvider.notifier).removeItem(item.id),
               ),
-              Text('${item.quantity}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(
+                '${item.quantity}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               IconButton(
                 icon: const Icon(LucideIcons.plusCircle, color: AppColors.primary),
-                onPressed: () => ref.read(cartProvider.notifier).addItem(item.id, item.name, item.price, item.image, item.restaurantName),
+                onPressed: () => ref.read(cartProvider.notifier).addItem(
+                  id: item.id,
+                  name: item.name,
+                  price: item.price,
+                  image: item.image,
+                  restaurantId: item.restaurantId,
+                  restaurantName: item.restaurantName,
+                ),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _imagePlaceholder() {
+    return Container(width: 70, height: 70, color: AppColors.surfaceContainerHighest);
   }
 
   Widget _buildCheckoutBar(BuildContext context, WidgetRef ref, double total) {
@@ -135,10 +170,17 @@ class CartScreen extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Total', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Total',
+                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                ),
                 Text(
                   '\$${total.toStringAsFixed(2)}',
-                  style: const TextStyle(color: AppColors.primary, fontSize: 24, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -168,6 +210,11 @@ class CartScreen extends ConsumerWidget {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final cartItems = ref.read(cartProvider);
+    if (cartItems.isEmpty) return;
+
+    final firstItem = cartItems.first;
+
     final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final addressesSnap = await FirebaseFirestore.instance
         .collection('users')
@@ -178,36 +225,70 @@ class CartScreen extends ConsumerWidget {
     if (addressesSnap.docs.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please add a delivery address first!'), backgroundColor: Colors.orange),
+          const SnackBar(
+            content: Text('Please add a delivery address first!'),
+            backgroundColor: Colors.orange,
+          ),
         );
         context.push('/addresses');
       }
       return;
     }
 
-    final customerName = userDoc.data()?['name'] ?? 'Unknown Customer';
-    final firstItemName = ref.read(cartProvider).first.name;
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Placing order...'), duration: Duration(seconds: 6)),
+      );
+    }
 
+    final customerName = userDoc.data()?['name'] ?? 'Unknown Customer';
     final addressData = addressesSnap.docs.first.data();
     final floor = addressData['floor'].toString();
     final liveAddress = '${addressData['street']} ${addressData['number']}'
         '${floor.isNotEmpty ? ', Floor: $floor' : ''}';
 
-    final orderDocRef = await FirebaseFirestore.instance.collection('orders').add({
+    final geocodedCustomer = await GeocodingService.geocodeAddress(
+      '${addressData['street']} ${addressData['number']}',
+    );
+
+    Map<String, double>? geocodedRestaurant;
+
+    final restaurantDoc = await FirebaseFirestore.instance
+        .collection('restaurants')
+        .doc(firstItem.restaurantId)
+        .get();
+
+    if (restaurantDoc.exists) {
+      final rData = restaurantDoc.data() as Map<String, dynamic>;
+      final restaurantAddress = rData['address'] as String?;
+      if (restaurantAddress != null && restaurantAddress.isNotEmpty) {
+        geocodedRestaurant = await GeocodingService.geocodeAddress(restaurantAddress);
+      }
+    }
+
+    final orderPayload = <String, dynamic>{
       'customerId': user.uid,
       'customerName': customerName,
       'status': 'pending',
       'courierId': null,
-      'price': total,
-      'restaurantName': 'Order containing $firstItemName',
+      'price': double.parse(total.toStringAsFixed(2)),
+      'restaurantId': firstItem.restaurantId,
+      'restaurantName': firstItem.restaurantName,
       'deliveryAddress': liveAddress,
       'notes': 'Beta App Order',
       'createdAt': FieldValue.serverTimestamp(),
-    });
+      if (geocodedCustomer != null) 'customerLat': geocodedCustomer['lat'],
+      if (geocodedCustomer != null) 'customerLng': geocodedCustomer['lng'],
+      if (geocodedRestaurant != null) 'restaurantLat': geocodedRestaurant['lat'],
+      if (geocodedRestaurant != null) 'restaurantLng': geocodedRestaurant['lng'],
+    };
+
+    final orderDocRef = await FirebaseFirestore.instance.collection('orders').add(orderPayload);
 
     ref.read(cartProvider.notifier).clearCart();
 
     if (context.mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Order Sent to Dispatch!'), backgroundColor: Colors.green),
       );
